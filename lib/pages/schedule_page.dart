@@ -1,20 +1,24 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:formulavision/components/f1text.dart';
+import 'package:formulavision/data/functions/schedule.function.dart';
+import 'package:formulavision/data/models/jolpica/schedule.model.dart';
 import 'package:intl/intl.dart';
 
 class F1Event {
   final String summary;
   final String location;
   final DateTime startTime;
-  final DateTime endTime;
+  final DateTime? endTime;
   bool isExpanded;
 
   F1Event({
     required this.summary,
     required this.location,
     required this.startTime,
-    required this.endTime,
+    this.endTime,
     this.isExpanded = false,
   });
 
@@ -102,17 +106,17 @@ class F1Event {
   // Get formatted time range
   String get formattedStartTime {
     final startFormat = DateFormat('HH:mm');
-    return '${startFormat.format(startTime.toLocal())}';
+    return startFormat.format(startTime.toLocal());
   }
 
   String get formattedEndTime {
     final endFormat = DateFormat('HH:mm');
-    return '${endFormat.format(endTime.toLocal())}';
+    return endTime == null ? '' : endFormat.format(endTime!.toLocal());
   }
 
   // Get duration in minutes
   int get durationMinutes {
-    return endTime.difference(startTime).inMinutes;
+    return endTime == null ? 0 : endTime!.difference(startTime).inMinutes;
   }
 
   // Get formatted duration
@@ -193,6 +197,8 @@ class SchedulePage extends StatefulWidget {
 class _SchedulePageState extends State<SchedulePage> {
   List<RaceWeekend> _raceWeekends = [];
   bool _isLoading = true;
+  String _year = DateTime.now().year.toString();
+  late Future<F1ScheduleResponse> _scheduleFuture;
 
   @override
   void initState() {
@@ -201,6 +207,50 @@ class _SchedulePageState extends State<SchedulePage> {
   }
 
   Future<void> _loadCalendarData() async {
+    return _loadCalendarDataNew();
+  }
+
+  Future<void> _loadCalendarDataNew() async {
+    try {
+      //_scheduleFuture = await fetchF1Schedule(year: _year);
+      F1ScheduleResponse resp = await fetchF1Schedule(year: _year);
+
+      final List<dynamic> racesList = resp.mrData.raceTable.races;
+      racesList.sort((a, b) => a.round.compareTo(b.round));
+
+      final List<RaceWeekend> raceWeekends = racesList.map((race) {
+        final List<F1Event> events = [];
+
+        events.add(
+          F1Event(
+            summary: "${race.raceName} $_year - Practice 1",
+            location: "${race.circuit.circuitName}",
+            startTime: race.firstPractice.dateTime,
+            endTime: race.firstPractice.dateTime.add(Duration(hours: 1)),
+            isExpanded: false,
+          ),
+        );
+        return RaceWeekend(
+          name: "${race.raceName} $_year",
+          location: "${race.circuit.location.country}",
+          events: events,
+        );
+      }).toList();
+
+      setState(() {
+        _raceWeekends = raceWeekends;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading calendar data: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadCalendarDataOrg() async {
     try {
       final String jsonString =
           await rootBundle.loadString('assets/Formula_1.json');
@@ -287,15 +337,32 @@ class _SchedulePageState extends State<SchedulePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Schedule',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontFamily: 'formula-bold'),
+                  Row(
+                    children: [
+                      F1Text('Schedule'),
+                      Spacer(),
+                      F1Text('Season ', fontSize: 20),
+                      DropdownButton<String>(
+                        value: _year,
+                        dropdownColor: Colors.grey,
+                        items: [
+                          for (var i = 2000; i <= DateTime.now().year; i++)
+                            DropdownMenuItem<String>(
+                              value: "$i",
+                              child: F1Text("$i", fontSize: 20),
+                            )
+                        ],
+                        onChanged: (String? value) {
+                          setState(() {
+                            _year = value!;
+                            _loadCalendarData();
+                          });
+                        },
+                      ),
+                    ],
                   ),
                   SizedBox(height: 15),
-                  Container(
+                  SizedBox(
                     height: MediaQuery.of(context).size.height * 0.8,
                     width: double.infinity,
                     child: _isLoading
@@ -360,13 +427,19 @@ class _SchedulePageState extends State<SchedulePage> {
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              // Text(
+              //   raceWeekend.name,
+              //   style: TextStyle(
+              //     color: Colors.white,
+              //     fontSize: 16,
+              //     fontFamily: 'formula-bold',
+              //   ),
+              //   maxLines: 3,
+              //   overflow: TextOverflow.ellipsis,
+              // ),
+              F1Text(
                 raceWeekend.name,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontFamily: 'formula-bold',
-                ),
+                fontSize: 16,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -480,14 +553,7 @@ class _SchedulePageState extends State<SchedulePage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          event.day,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 30,
-                            fontFamily: 'formula-bold',
-                          ),
-                        ),
+                        F1Text(event.day),
                         Text(
                           event.month.toUpperCase(),
                           style: TextStyle(
@@ -500,13 +566,9 @@ class _SchedulePageState extends State<SchedulePage> {
                   ),
                   SizedBox(width: 12),
                   Expanded(
-                    child: Text(
+                    child: F1Text(
                       event.sessionName,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20,
-                      ),
+                      fontSize: 20,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),

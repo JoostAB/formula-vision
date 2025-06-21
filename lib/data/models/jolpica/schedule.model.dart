@@ -268,8 +268,10 @@ class SessionInfo {
       };
 
   /// Returns a DateTime object for the session start time
-  DateTime get dateTime {
+  DateTime? get dateTime {
     // Combines date and time strings into a DateTime object
-    return DateTime.parse('${date}T$time');
+    return (time == null || time == '')
+        ? DateTime.parse('${date}')
+        : DateTime.parse('${date}T$time');
   }
 }
